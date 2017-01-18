@@ -1,6 +1,6 @@
 {
   "name": "babel-plugin-trace-execution",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Trace execution context of JS functions",
   "license": "MIT",
   "repository": {
