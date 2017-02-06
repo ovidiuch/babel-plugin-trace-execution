@@ -97,6 +97,8 @@ export default function ({ types: t }) {
     end,
     bindings,
     compared,
+    beforeChildCall,
+    afterChildCall,
     returnValue,
     enterCall,
     leaveCall,
@@ -124,6 +126,12 @@ export default function ({ types: t }) {
         t.identifier('compared'),
         t.arrayExpression(compared.map(s => t.stringLiteral(s)))
       ));
+    }
+    if (beforeChildCall !== undefined) {
+      stepProps.push(t.objectProperty(t.identifier('beforeChildCall'), t.booleanLiteral(true)));
+    }
+    if (afterChildCall !== undefined) {
+      stepProps.push(t.objectProperty(t.identifier('afterChildCall'), t.booleanLiteral(true)));
     }
     if (returnValue !== undefined) {
       stepProps.push(t.objectProperty(t.identifier('returnValue'), returnValue));
@@ -243,22 +251,34 @@ export default function ({ types: t }) {
       const { node } = path;
       const { start, end } = node;
       const bindings = getBindingsForScope(path.scope, this.bindings);
-      const traceCall = createTraceCall({
-        bindings,
-        ...getOffsettedRange(start, end, this.fnOffset),
-      });
+      const offsetRange = getOffsettedRange(start, end, this.fnOffset);
 
       /**
        * Replace recursive call expressions with IIFE containing trace() call
-       * BEFORE return value has been computed.
+       * both BEFORE and AFTER return value has been computed.
        */
       if (node.callee.name === this.fnName) {
+        const traceCallBefore = createTraceCall({
+          bindings,
+          ...offsetRange,
+          beforeChildCall: true,
+        });
+        const traceCallAfter = createTraceCall({
+          bindings,
+          ...offsetRange,
+          afterChildCall: true,
+        });
+        const returnValId = path.scope.generateUidIdentifier('uid');
         path.replaceWith(
           t.callExpression(
             t.arrowFunctionExpression([],
               t.blockStatement([
-                traceCall,
-                t.returnStatement(node)
+                traceCallBefore,
+                t.variableDeclaration('const', [
+                  t.variableDeclarator(returnValId, node)
+                ]),
+                traceCallAfter,
+                t.returnStatement(returnValId)
               ])
             ),
           [])
@@ -282,7 +302,10 @@ export default function ({ types: t }) {
                 t.variableDeclaration('const', [
                   t.variableDeclarator(returnValId, node)
                 ]),
-                traceCall,
+                createTraceCall({
+                  bindings,
+                  ...offsetRange,
+                }),
                 t.returnStatement(returnValId)
               ])
             ),
